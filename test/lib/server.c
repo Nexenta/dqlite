@@ -1,4 +1,5 @@
 #include "unistd.h"
+#include "stdio.h"
 
 #include "fs.h"
 #include "server.h"

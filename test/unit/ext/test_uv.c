@@ -18,7 +18,7 @@ TEST_MODULE(ext_uv);
 
 struct fixture
 {
-	struct uv_loop_s loop;
+	struct uv_loop_s *loop;
 	struct uv_stream_s *listener;
 	struct test_endpoint endpoint;
 	int client;
@@ -71,11 +71,11 @@ static void listenCb(uv_stream_t *listener, int status)
 
 	switch (listener->type) {
 		case UV_TCP:
-			rv = uv_tcp_init(&f->loop, &f->tcp);
+			rv = uv_tcp_init(f->loop, &f->tcp);
 			munit_assert_int(rv, ==, 0);
 			break;
 		case UV_NAMED_PIPE:
-			rv = uv_pipe_init(&f->loop, &f->pipe, 0);
+			rv = uv_pipe_init(f->loop, &f->pipe, 0);
 			munit_assert_int(rv, ==, 0);
 			break;
 		default:
@@ -95,7 +95,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	test_uv_setup(params, &f->loop);
 	test_endpoint_setup(&f->endpoint, params);
 
-	rv = transport__stream(&f->loop, f->endpoint.fd, &f->listener);
+	rv = transport__stream(f->loop, f->endpoint.fd, &f->listener);
 	munit_assert_int(rv, ==, 0);
 
 	f->listener->data = f;
@@ -105,7 +105,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	f->client = test_endpoint_connect(&f->endpoint);
 
-	test_uv_run(&f->loop, 1);
+	test_uv_run(f->loop, 1);
 
 	return f;
 }
@@ -119,8 +119,8 @@ static void tear_down(void *data)
 	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
 	test_endpoint_tear_down(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
-	test_uv_stop(&f->loop);
-	test_uv_tear_down(&f->loop);
+	test_uv_stop(f->loop);
+	test_uv_tear_down(f->loop);
 	free(f);
 }
 
@@ -152,7 +152,7 @@ TEST_CASE(write, sync, params)
 	rv = read(f->client, buf2->base, buf2->len);
 	munit_assert_int(rv, ==, buf2->len);
 
-	test_uv_run(&f->loop, 1);
+	test_uv_run(f->loop, 1);
 
 	buf_free(buf1);
 	buf_free(buf2);
@@ -170,37 +170,38 @@ TEST_SUITE(read);
 TEST_SETUP(read, setup);
 TEST_TEAR_DOWN(read, tear_down);
 
-static void test_read_sync__alloc_cb(uv_handle_t *stream,
-				     size_t _,
-				     uv_buf_t *buf)
+static uv_buf_t test_read_sync__alloc_cb(uv_handle_t *stream,
+				     size_t _)
 {
 	(void)stream;
 	(void)_;
 
-	buf->len = TEST_SOCKET_MIN_BUF_SIZE;
-	buf->base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
+	uv_buf_t buf;
+	buf.len = TEST_SOCKET_MIN_BUF_SIZE;
+	buf.base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
+	return buf;
 }
 
 static void test_read_sync__read_cb(uv_stream_t *stream,
 				    ssize_t nread,
-				    const uv_buf_t *buf)
+				    const uv_buf_t buf)
 {
 	bool *read_cb_called;
 
 	/* Apprently there's an empty read before the actual one. */
 	if (nread == 0) {
-		free(buf->base);
+		free(buf.base);
 		return;
 	}
 
 	munit_assert_int(nread, ==, TEST_SOCKET_MIN_BUF_SIZE);
-	munit_assert_int(buf->len, ==, TEST_SOCKET_MIN_BUF_SIZE);
+	munit_assert_int(buf.len, ==, TEST_SOCKET_MIN_BUF_SIZE);
 
 	read_cb_called = stream->data;
 
 	*read_cb_called = true;
 
-	free(buf->base);
+	free(buf.base);
 }
 
 /* Reading an amount of data below the buffer happens synchronously. */
@@ -221,7 +222,7 @@ TEST_CASE(read, sync, params)
 	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
 
-	test_uv_run(&f->loop, 1);
+	test_uv_run(f->loop, 1);
 
 	munit_assert_true(read_cb_called);
 

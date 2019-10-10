@@ -20,7 +20,7 @@
 
 #define FIXTURE_RAFT                             \
 	char *dir;                               \
-	struct uv_loop_s loop;                   \
+	struct uv_loop_s *loop;                   \
 	struct raft_uv_transport raft_transport; \
 	struct raft_io raft_io;                  \
 	struct raft_fsm fsm;                     \
@@ -32,9 +32,9 @@
 		int rv2;                                            \
 		f->dir = test_dir_setup();                          \
 		test_uv_setup(params, &f->loop);                    \
-		rv2 = raftProxyInit(&f->raft_transport, &f->loop);  \
+		rv2 = raftProxyInit(&f->raft_transport, f->loop);  \
 		munit_assert_int(rv2, ==, 0);                       \
-		rv2 = raft_uv_init(&f->raft_io, &f->loop, f->dir,   \
+		rv2 = raft_uv_init(&f->raft_io, f->loop, f->dir,   \
 				   &f->raft_transport);             \
 		munit_assert_int(rv2, ==, 0);                       \
 		rv2 = fsm__init(&f->fsm, &f->config, &f->registry); \
@@ -49,9 +49,9 @@
 #define TEAR_DOWN_RAFT                              \
 	{                                           \
 		raft_close(&f->raft, NULL);         \
-		test_uv_stop(&f->loop);             \
+		test_uv_stop(f->loop);             \
 		fsm__close(&f->fsm);                \
-		test_uv_tear_down(&f->loop);        \
+		test_uv_tear_down(f->loop);        \
 		raft_uv_close(&f->raft_io);         \
 		raftProxyClose(&f->raft_transport); \
 		test_dir_tear_down(f->dir);         \

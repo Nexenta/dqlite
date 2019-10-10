@@ -2,14 +2,13 @@
 
 #define TEST_UV_MAX_LOOP_RUN 10 /* Max n. of loop iterations upon teardown */
 
-void test_uv_setup(const MunitParameter params[], struct uv_loop_s *l)
+void test_uv_setup(const MunitParameter params[], struct uv_loop_s **l)
 {
     int rv;
 
     (void)params;
 
-    rv = uv_loop_init(l);
-    munit_assert_int(rv, ==, 0);
+    *l = uv_loop_new();
 }
 
 int test_uv_run(struct uv_loop_s *l, unsigned n)
@@ -22,7 +21,7 @@ int test_uv_run(struct uv_loop_s *l, unsigned n)
     for (i = 0; i < n; i++) {
         rv = uv_run(l, UV_RUN_ONCE);
         if (rv < 0) {
-            munit_errorf("uv_run: %s (%d)", uv_strerror(rv), rv);
+            munit_errorf("uv_run: %s (%d)", uv_strerror(uv_last_error(l)), rv);
         }
         if (rv == 0) {
             break;
@@ -54,12 +53,10 @@ void test_uv_tear_down(struct uv_loop_s *l)
 {
     int rv;
 
-    rv = uv_loop_close(l);
-    if (rv != 0) {
-        uv_walk(l, test_uv__walk_cb, NULL);
-        munit_errorf("uv_loop_close: %s (%d)", uv_strerror(rv), rv);
-    }
+    uv_walk(l, test_uv__walk_cb, NULL);
+//    munit_errorf("uv_loop_close: %s (%d)", uv_strerror(uv_last_error(l)), uv_last_error(l).code);
+    uv_loop_delete(l);
 
-    rv = uv_replace_allocator(malloc, realloc, calloc, free);
-    munit_assert_int(rv, ==, 0);
+//    rv = uv_replace_allocator(malloc, realloc, calloc, free);
+//    munit_assert_int(rv, ==, 0);
 }

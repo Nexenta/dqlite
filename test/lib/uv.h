@@ -15,7 +15,7 @@
 /**
  * Initialize the given libuv loop.
  */
-void test_uv_setup(const MunitParameter params[], struct uv_loop_s *l);
+void test_uv_setup(const MunitParameter params[], struct uv_loop_s **l);
 
 /**
  * Run the loop until there are no pending active handles.

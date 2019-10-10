@@ -52,9 +52,9 @@ TEST_MODULE(conn);
 	SETUP_CLIENT;                                                  \
 	RAFT_BOOTSTRAP;                                                \
 	RAFT_START;                                                    \
-	rv = transport__stream(&f->loop, f->server, &stream);          \
+	rv = transport__stream(f->loop, f->server, &stream);          \
 	munit_assert_int(rv, ==, 0);                                   \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
+	rv = conn__start(&f->conn, &f->config, f->loop, &f->registry, \
 			 &f->raft, stream, &f->raft_transport, NULL);  \
 	munit_assert_int(rv, ==, 0)
 
@@ -82,7 +82,7 @@ TEST_MODULE(conn);
 		int rv2;                               \
 		rv2 = clientSendHandshake(&f->client); \
 		munit_assert_int(rv2, ==, 0);          \
-		test_uv_run(&f->loop, 1);              \
+		test_uv_run(f->loop, 1);              \
 	}
 
 /* Open a test database. */
@@ -91,7 +91,7 @@ TEST_MODULE(conn);
 		int rv2;                                  \
 		rv2 = clientSendOpen(&f->client, "test"); \
 		munit_assert_int(rv2, ==, 0);             \
-		test_uv_run(&f->loop, 2);                 \
+		test_uv_run(f->loop, 2);                 \
 		rv2 = clientRecvDb(&f->client);           \
 		munit_assert_int(rv2, ==, 0);             \
 	}
@@ -102,7 +102,7 @@ TEST_MODULE(conn);
 		int rv2;                                   \
 		rv2 = clientSendPrepare(&f->client, SQL);  \
 		munit_assert_int(rv2, ==, 0);              \
-		test_uv_run(&f->loop, 2);                  \
+		test_uv_run(f->loop, 2);                  \
 		rv2 = clientRecvStmt(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);              \
 	}
@@ -113,7 +113,7 @@ TEST_MODULE(conn);
 		int rv2;                                           \
 		rv2 = clientSendExec(&f->client, STMT_ID);         \
 		munit_assert_int(rv2, ==, 0);                      \
-		test_uv_run(&f->loop, 7);                          \
+		test_uv_run(f->loop, 7);                          \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
 				       ROWS_AFFECTED);             \
 		munit_assert_int(rv2, ==, 0);                      \
@@ -125,7 +125,7 @@ TEST_MODULE(conn);
 		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);               \
-		test_uv_run(&f->loop, 2);                   \
+		test_uv_run(f->loop, 2);                   \
 		rv2 = clientRecvRows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);               \
 	}
@@ -136,7 +136,7 @@ TEST_MODULE(conn);
 		int rv2;                                          \
 		rv2 = clientSendConnect(&f->client, ID, ADDRESS); \
 		munit_assert_int(rv2, ==, 0);                     \
-		test_uv_run(&f->loop, 1);                         \
+		test_uv_run(f->loop, 1);                         \
 	}
 
 /******************************************************************************
