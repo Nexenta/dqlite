@@ -6,14 +6,14 @@
 #include "transport.h"
 
 /* Called to allocate a buffer for the next stream read. */
-static void alloc_cb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
+static uv_buf_t alloc_cb(uv_handle_t *stream, size_t suggested_size)
 {
 	struct transport *t;
 	(void)suggested_size;
 	t = stream->data;
 	assert(t->read.base != NULL);
 	assert(t->read.len > 0);
-	*buf = t->read;
+	return t->read;
 }
 
 /* Invoke the read callback. */
@@ -31,10 +31,9 @@ static void read_done(struct transport *t, int status)
 	cb(t, status);
 }
 
-static void read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+static void read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t buf)
 {
 	struct transport *t;
-	(void)buf;
 
 	t = stream->data;
 

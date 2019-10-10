@@ -16,7 +16,7 @@ struct dqlite_node
 	struct config config;                       /* Config values */
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
 	struct registry registry;                   /* Databases */
-	struct uv_loop_s loop;                      /* UV loop */
+	struct uv_loop_s *loop;                     /* UV loop */
 	struct raft_uv_transport raft_transport;    /* Raft libuv transport */
 	struct raft_io raft_io;                     /* libuv I/O */
 	struct raft_fsm raft_fsm;                   /* dqlite FSM */

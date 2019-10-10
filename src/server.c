@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include <stdlib.h>
+#include <errno.h>
 #include <sys/un.h>
 #include <time.h>
 
@@ -32,17 +33,12 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_config_init;
 	}
 	registry__init(&d->registry, &d->config);
-	rv = uv_loop_init(&d->loop);
-	if (rv != 0) {
-		/* TODO: better error reporting */
-		rv = DQLITE_ERROR;
-		goto err_after_vfs_init;
-	}
-	rv = raftProxyInit(&d->raft_transport, &d->loop);
+	d->loop = uv_loop_new();
+	rv = raftProxyInit(&d->raft_transport, d->loop);
 	if (rv != 0) {
 		goto err_after_loop_init;
 	}
-	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
+	rv = raft_uv_init(&d->raft_io, d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
@@ -103,7 +99,7 @@ err_after_raft_io_init:
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_loop_init:
-	uv_loop_close(&d->loop);
+	uv_loop_delete(d->loop);
 err_after_vfs_init:
 	vfsClose(&d->vfs);
 err_after_config_init:
@@ -124,7 +120,8 @@ void dqlite__close(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	replication__close(&d->replication);
 	fsm__close(&d->raft_fsm);
-	uv_loop_close(&d->loop);
+	raft_uv_close(&d->raft_io);
+	uv_loop_delete(d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
 	vfsClose(&d->vfs);
@@ -167,13 +164,42 @@ static int ipParse(const char *address, struct sockaddr_in *addr)
 		port = "8080";
 	}
 
-	rv = uv_ip4_addr(host, atoi(port), addr);
-	if (rv != 0) {
-		return RAFT_NOCONNECTION;
-	}
+	*addr = uv_ip4_addr(host, atoi(port));
 
 	return 0;
 }
+
+static int uv_pipe_getsockname(const uv_pipe_t* handle, char* buf, size_t* len) {
+	struct sockaddr_un sa;
+	socklen_t addrlen;
+	int err;
+
+	addrlen = sizeof(sa);
+	memset(&sa, 0, addrlen);
+	err = getsockname(handle->io_watcher.fd, (struct sockaddr*) &sa, &addrlen);
+	if (err < 0) {
+		*len = 0;
+		return -errno;
+	}
+
+	if (sa.sun_path[0] == 0)
+		/* Linux abstract namespace */
+		addrlen -= offsetof(struct sockaddr_un, sun_path);
+	else
+		addrlen = strlen(sa.sun_path) + 1;
+
+
+	if (addrlen > *len) {
+		*len = addrlen;
+		return UV_ENOBUFS;
+	}
+
+	memcpy(buf, sa.sun_path, addrlen);
+	*len = addrlen;
+
+	return 0;
+}
+
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
@@ -208,7 +234,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		len += sizeof(sa_family_t);
 		addr = (struct sockaddr *)&addr_un;
 	}
-	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	fd = socket(domain, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
 	if (fd == -1) {
 		return DQLITE_ERROR;
 	}
@@ -228,7 +254,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_ERROR;
 	}
 
-	rv = transport__stream(&t->loop, fd, &t->listener);
+	rv = transport__stream(t->loop, fd, &t->listener);
 	if (rv != 0) {
 		close(fd);
 		return DQLITE_ERROR;
@@ -347,7 +373,7 @@ static void destroy_conn(struct conn *conn)
 	sqlite3_free(conn);
 }
 
-static void stop_cb(uv_async_t *stop)
+static void stop_cb(uv_async_t *stop, int status)
 {
 	struct dqlite_node *d = stop->data;
 	queue *head;
@@ -369,7 +395,7 @@ static void stop_cb(uv_async_t *stop)
  *
  * It unblocks the s->ready semaphore.
  */
-static void startup_cb(uv_timer_t *startup)
+static void startup_cb(uv_timer_t *startup, int status)
 {
 	struct dqlite_node *d = startup->data;
 	int rv;
@@ -396,7 +422,7 @@ static void listenCb(uv_stream_t *listener, int status)
 			if (stream == NULL) {
 				return;
 			}
-			rv = uv_tcp_init(&t->loop, (struct uv_tcp_s *)stream);
+			rv = uv_tcp_init(t->loop, (struct uv_tcp_s *)stream);
 			assert(rv == 0);
 			break;
 		case UV_NAMED_PIPE:
@@ -404,7 +430,7 @@ static void listenCb(uv_stream_t *listener, int status)
 			if (stream == NULL) {
 				return;
 			}
-			rv = uv_pipe_init(&t->loop, (struct uv_pipe_s *)stream,
+			rv = uv_pipe_init(t->loop, (struct uv_pipe_s *)stream,
 					  0);
 			assert(rv == 0);
 			break;
@@ -437,7 +463,7 @@ static void listenCb(uv_stream_t *listener, int status)
 	if (conn == NULL) {
 		goto err;
 	}
-	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
+	rv = conn__start(conn, &t->config, t->loop, &t->registry, &t->raft,
 			 stream, &t->raft_transport, destroy_conn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
@@ -469,13 +495,13 @@ static int taskRun(struct dqlite_node *d)
 
 	/* Initialize notification handles. */
 	d->stop.data = d;
-	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
+	rv = uv_async_init(d->loop, &d->stop, stop_cb);
 	assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
 	 * unblock clients of taskReady. */
 	d->startup.data = d;
-	rv = uv_timer_init(&d->loop, &d->startup);
+	rv = uv_timer_init(d->loop, &d->startup);
 	assert(rv == 0);
 	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
 	assert(rv == 0);
@@ -490,7 +516,7 @@ static int taskRun(struct dqlite_node *d)
 		return rv;
 	}
 
-	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
+	rv = uv_run(d->loop, UV_RUN_DEFAULT);
 	assert(rv == 0);
 
 	/* Unblock any client of taskReady */

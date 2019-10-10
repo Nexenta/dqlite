@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <errno.h>
 #include <sqlite3.h>
 #include <uv.h>
 
@@ -109,8 +110,9 @@ void dqlite__error_sys(dqlite__error *e, const char *msg) {
 }
 
 void dqlite__error_uv(dqlite__error *e, int err, const char *msg) {
+	uv_err_t uv_err = { err, 0 };
 	dqlite__error_printf(
-	    e, "%s: %s (%s)", msg, uv_strerror(err), uv_err_name(err));
+	    e, "%s: %s (%s)", msg, uv_strerror(uv_err), uv_err_name(uv_err));
 }
 
 int dqlite__error_copy(dqlite__error *e, char **msg) {
@@ -147,10 +149,12 @@ int dqlite__error_is_disconnect(dqlite__error *e) {
 	if (*e == NULL)
 		return 0;
 
-	if (strstr(*e, uv_err_name(UV_EOF)) != NULL)
+	uv_err_t uv_eof = { UV_EOF, 0 };
+	if (strstr(*e, uv_err_name(uv_eof)) != NULL)
 		return 1;
 
-	if (strstr(*e, uv_err_name(UV_ECONNRESET)) != NULL)
+	uv_err_t uv_econnreset = { UV_ECONNRESET, 0 };
+	if (strstr(*e, uv_err_name(uv_econnreset)) != NULL)
 		return 1;
 
 	return 0;
