@@ -30,6 +30,18 @@ struct rows
 	struct row *next;
 };
 
+struct server
+{
+	int	id;
+	char	addr[INET_ADDRSTRLEN + 6 + 1];
+};
+
+struct servers
+{
+	uint64_t	servers_nr;
+	struct server	*nodes;
+};
+
 /* Initialize a new client, writing requests to fd. */
 int clientInit(struct client *c, int fd);
 
@@ -83,5 +95,20 @@ int clientSendRemove(struct client *c, unsigned id);
 
 /* Receive an empty response. */
 int clientRecvEmpty(struct client *c);
+
+/* Send a request to obtain a list of servers from the cluster */
+int clientSendCluster(struct client *c);
+
+/* Receive a list of servers from a cluster request */
+int clientRecvServers(struct client *c, struct servers *servers);
+
+/* Release all memory used in the given servers object. */
+void clientCloseServers(struct servers *servers);
+
+/* Send a request to check if it's connected to a leader */
+int clientSendLeader(struct client *c);
+
+/* Receive a server from a leader request */
+int clientRecvServer(struct client *c, struct server *server);
 
 #endif /* CLIENT_H_*/
