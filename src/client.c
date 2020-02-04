@@ -320,3 +320,62 @@ int clientRecvEmpty(struct client *c)
 	return 0;
 }
 
+int clientSendCluster(struct client *c)
+{
+	struct request_join request;
+	REQUEST(cluster, CLUSTER);
+	return 0;
+}
+
+int clientRecvServers(struct client *c, struct servers *servers)
+{
+	struct response_servers response;
+	uint64_t snum;
+
+	RESPONSE(servers, SERVERS);
+	servers->servers_nr = snum = response.n;
+
+	if (snum == 0) {
+		servers->nodes = NULL;
+		return 0;
+	}
+
+	servers->nodes = sqlite3_malloc(snum * sizeof *servers->nodes);
+	if (servers->nodes == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	for (uint64_t i = 0; i < snum; i++) {
+		struct response_server response;
+
+		DECODE(server);
+		servers->nodes[i].id = response.id;
+		strncpy(servers->nodes[i].addr, response.address,
+			INET_ADDRSTRLEN + 6);
+	}
+	return 0;
+}
+
+void clientCloseServers(struct servers *servers)
+{
+	if (servers->nodes != NULL)
+		sqlite3_free(servers->nodes);
+}
+
+int clientSendLeader(struct client *c)
+{
+	struct request_leader request;
+
+	REQUEST(leader, LEADER);
+	return 0;
+}
+
+int clientRecvServer(struct client *c, struct server *server)
+{
+	struct response_server response;
+
+	RESPONSE(server, SERVER);
+	server->id = response.id;
+	strncpy(server->addr, response.address, INET_ADDRSTRLEN + 6);
+	return 0;
+}
