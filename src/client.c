@@ -324,7 +324,8 @@ int clientRecvEmpty(struct client *c)
 
 int clientSendCluster(struct client *c)
 {
-	struct request_join request;
+	struct request_cluster request;
+	request.format = DQLITE_REQUEST_CLUSTER_FORMAT_V0;
 	REQUEST(cluster, CLUSTER);
 	return 0;
 }
